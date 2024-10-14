@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye-Tracking Logout Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        #status {
+            margin: 1rem 0;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        #video {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+
+        #timer {
+            font-size: 3em;
+            margin: 1rem 0;
+        }
+
+        #blinkMessage {
+            color: #d9534f;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Eye-Tracking Logout Demo</h1>
+        <div id="timer">7</div>
+        <div id="status">Preparing to start eye-tracking...</div>
+        <video id="video" width="640" height="480" autoplay></video>
+        <div id="blinkMessage"></div>
+    </div>
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        const timerDiv = document.getElementById('timer');
+        const blinkMessageDiv = document.getElementById('blinkMessage');
+
+        let countdown = 7;
+        let isTracking = false;
+        let blinkCount = 0;
+
+        function startTimer() {
+            const timer = setInterval(() => {
+                countdown--;
+                timerDiv.textContent = countdown;
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    timerDiv.style.display = 'none';
+                    statusDiv.textContent = 'Eye-tracking active. Waiting for blinks...';
+                    isTracking = true;
+                }
+            }, 1000);
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                video.play();
+                startTimer();
+            })
+            .catch(err => {
+                console.error("Error accessing the camera:", err);
+                statusDiv.innerText = "Error: Unable to access the camera";
+            });
+
+        function sendFrame() {
+            if (isTracking) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataURL = canvas.toDataURL('image/jpeg');
+                socket.emit('video_frame', dataURL);
+            }
+        }
+
+        setInterval(sendFrame, 1000 / 30);  // 30 fps
+
+        socket.on('blink_detected', function (data) {
+            blinkCount++;
+            if (blinkCount === 1) {
+                statusDiv.innerText = "First blink detected!";
+            } else if (blinkCount === 2) {
+                statusDiv.innerText = "Second blink detected!";
+                blinkMessageDiv.innerText = "Logging out in 1 second...";
+                setTimeout(() => {
+                    window.location.href = "/logout";
+                }, 1000);
+            }
+        });
+
+        socket.on('logout', function (data) {
+            statusDiv.innerText = data.message;
+        });
+    </script>
+</body>
+
+</html>
